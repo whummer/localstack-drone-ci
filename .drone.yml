@@ -1,0 +1,51 @@
+---
+kind: pipeline
+type: docker
+name: default
+
+steps:
+  - name: run-lambda
+    image: localstack/localstack
+    commands:
+      - echo Sleeping...
+      - ifconfig
+      - env
+      - docker ps
+      - docker network ls
+      - sleep 20
+      - echo Starting...
+      - export LOCALSTACK_HOST=localstack
+      - echo 'def handler(*args, **kwargs)'":"' > /tmp/testlambda.py
+      - echo '  import boto3, os' >> /tmp/testlambda.py
+      - echo '  hostname = os.environ.get("LOCALSTACK_HOSTNAME")' >> /tmp/testlambda.py
+      - echo '  print("LocalStack endpoint - %s" % hostname)' >> /tmp/testlambda.py
+      - echo '  client = boto3.client("s3", endpoint_url="http://%s:4566" % hostname)' >> /tmp/testlambda.py
+      - echo '  print(client.list_buckets())' >> /tmp/testlambda.py
+      - (cd /tmp; zip testlambda.zip testlambda.py)
+      - awslocal lambda create-function --function-name func1 --runtime python3.6 --role r1 --handler testlambda.handler --zip-file fileb:///tmp/testlambda.zip
+      - awslocal lambda invoke --log-type Tail --function-name func1 /tmp/tmp.out
+      - sleep 5
+    # environment:
+    #   DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - name: docker_socket
+        path: /var/run/docker.sock
+    settings:
+      debug: true
+      insecure: true
+
+services:
+  - name: localstack
+    image: localstack/localstack
+    # privileged: true
+    ports:
+      - 4566
+    environment:
+      DEBUG: "1"
+      DATA_DIR: /tmp/localstack/data
+      DOCKER_HOST: unix:///var/run/docker.sock
+      LAMBDA_EXECUTOR: docker
+
+volumes:
+  - name: docker_socket
+    path: /var/run/docker.sock
